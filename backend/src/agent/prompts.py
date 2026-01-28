@@ -6,7 +6,9 @@ def get_current_date():
     return datetime.now().strftime("%B %d, %Y")
 
 
-query_writer_instructions = """Your goal is to generate sophisticated and diverse web search queries. These queries are intended for an advanced automated web research tool capable of analyzing complex results, following links, and synthesizing information.
+query_writer_instructions = """Your goal is to generate search queries for a local Markdown documentation search engine.
+Queries must match terminology, concepts, API names, and keywords that are likely to appear inside the documentation files.
+Do NOT generate web-style queries, news-style queries, financial queries, or date-based queries.
 
 Instructions:
 - Always prefer a single search query, only add another query if the original question requests multiple aspects or elements and one query is not enough.
@@ -14,7 +16,9 @@ Instructions:
 - Don't produce more than {number_queries} queries.
 - Queries should be diverse, if the topic is broad, generate more than 1 query.
 - Don't generate multiple similar queries, 1 is enough.
-- Query should ensure that the most current information is gathered. The current date is {current_date}.
+- Queries must be designed for searching inside a local Markdown documentation directory, not the web.
+- Avoid dates, news‑style queries, financial terms, or general world‑knowledge queries.
+- Use keywords from the user's question, API names, function names, concepts, or terminology that is likely to appear in documentation files.
 
 Format: 
 - Format your response as a JSON object with ALL two of these exact keys:
@@ -73,6 +77,9 @@ Instructions:
 - You have access to the user's question.
 - Generate a high-quality answer to the user's question based on the provided summaries and the user's question.
 - Include the sources you used from the Summaries in the answer correctly, use markdown format (e.g. [apnews](https://vertexaisearch.cloud.google.com/id/1-0)). THIS IS A MUST.
+- You MUST NOT use any information that is not explicitly present in the Summaries.
+- You MUST NOT reference external sources or URLs that are not part of the Summaries.
+- You MUST NOT invent APIs, functions, decorators, or syntax that does not appear in the Summaries.
 
 User Context:
 - {research_topic}

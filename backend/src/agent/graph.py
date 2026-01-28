@@ -24,6 +24,8 @@ from agent.prompts import (
 from agent.tools_and_schemas import SearchQueryList, Reflection
 from agent.utils import get_research_topic
 
+from agent.local_search import load_markdown_files, search_markdown
+
 
 load_dotenv()
 
@@ -89,12 +91,69 @@ def continue_to_web_research(state: QueryGenerationState) -> List[Send]:
 
 
 def web_research(state: WebSearchState, config: RunnableConfig) -> OverallState:
-    # TODO: Replace with local search over markdown files
-    return {
-        "web_research_result": [
-            "Mock result: Pope Francis was a chemist before priesthood."
+    """
+    Execute a local Markdown search query and return formatted research summaries.
+
+    This node performs one step of the research loop. For each generated search
+    query, it loads (or reuses) the Markdown corpus from the configured directory
+    and runs a hybrid search consisting of:
+        - keyword filtering (fast, broad match)
+        - semantic reranking (SentenceTransformer-based relevance scoring)
+
+    The function returns a list of formatted summaries, where each summary contains:
+        - a Markdown link to the source file
+        - an excerpt of the matched content
+
+    These summaries are later consumed by the reflection and answer-generation
+    nodes in the research pipeline.
+
+    Parameters
+    ----------
+    state : WebSearchState
+        Contains the search query string and a unique id for this branch.
+    config : RunnableConfig
+        Must include `configurable["dir"]` — the path to the local Markdown
+        documentation directory. The corpus is cached inside `configurable`
+        to avoid reloading files on each call.
+
+    Returns
+    -------
+    OverallState
+        A dictionary with a single key:
+            - "web_research_result": List[str]
+              A list of formatted summaries ready for reflection.
+              If no results are found, a placeholder summary is returned.
+
+    Raises
+    ------
+    ValueError
+        If the directory for local search is not provided.
+    """
+    configurable = config.get("configurable", {})
+    base_dir = configurable.get("dir")
+
+    if not base_dir:
+        raise ValueError("No directory provided for local search (--dir).")
+
+    if "corpus" not in configurable:
+        corpus = load_markdown_files(base_dir)
+        configurable["corpus"] = corpus
+    else:
+        corpus = configurable["corpus"]
+
+    if raw_results := search_markdown(
+        query=state["search_query"],
+        corpus=corpus,
+        max_results=10,
+    ):
+        summaries = [
+            f"[{r['title']}]({r['source']})\n{r['excerpt']}" for r in raw_results
         ]
-    }
+    else:
+        summaries = [
+            f"[no_results](no_results)\nNo results found for query: {state['search_query']}"
+        ]
+    return {"web_research_result": summaries}
 
 
 def reflection(state: OverallState, config: RunnableConfig) -> ReflectionState:
@@ -148,7 +207,9 @@ def evaluate_research(
         config: Configuration for the runnable, including max_research_loops setting
 
     Returns:
-        String literal indicating the next node to visit ("web_research" or "finalize_summary")
+        Either the string "finalize_answer" or a list of Send objects
+        to schedule additional web_research calls.
+
     """
     configurable = Configuration.from_runnable_config(config)
     max_research_loops = (
